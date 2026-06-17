@@ -42,9 +42,10 @@ const int  CENTER          = 512;  // Expected mid-point of 10-bit ADC
 const long DEBOUNCE_MS     = 50;   // Button debounce time in milliseconds
 
 // ── State variables ──────────────────────────────────────────────────────────
-bool fanEnabled      = true;   // Master on/off flag toggled by SW button
-bool lastButtonState = HIGH;   // Previous debounced button reading
-long lastDebounceTime = 0;     // Time of last button-state change
+bool fanEnabled        = true;  // Master on/off flag toggled by SW button
+bool lastRawReading    = HIGH;  // Raw pin reading from previous loop (for edge detection)
+bool stableButtonState = HIGH;  // Last confirmed stable button state after debounce
+long lastDebounceTime  = 0;     // Timestamp of the most recent raw-reading change
 
 // ── setup() ──────────────────────────────────────────────────────────────────
 void setup() {
@@ -103,21 +104,28 @@ int readFanSpeed() {
 
 // ── handleButton() ────────────────────────────────────────────────────────────
 // Debounced read of the joystick push-button.  Toggles fanEnabled on each press.
+// Uses two separate variables:
+//   lastRawReading    – tracks raw pin changes to restart the debounce timer
+//   stableButtonState – confirmed stable state used to detect actual transitions
 void handleButton() {
   bool reading = digitalRead(PIN_JOY_SW);
 
-  if (reading != lastButtonState) {
+  // Any raw change restarts the debounce timer
+  if (reading != lastRawReading) {
     lastDebounceTime = millis();
+    lastRawReading = reading;
   }
 
+  // Only act once the reading has been stable for the debounce period
   if ((millis() - lastDebounceTime) > DEBOUNCE_MS) {
-    // Stable LOW means button is pressed (active-low with pull-up)
-    if (reading == LOW && lastButtonState == HIGH) {
-      fanEnabled = !fanEnabled;
-      Serial.print(F("Fan toggled: "));
-      Serial.println(fanEnabled ? F("ON") : F("OFF"));
+    if (reading != stableButtonState) {
+      stableButtonState = reading;
+      // Stable LOW means button is pressed (active-low with pull-up)
+      if (stableButtonState == LOW) {
+        fanEnabled = !fanEnabled;
+        Serial.print(F("Fan toggled: "));
+        Serial.println(fanEnabled ? F("ON") : F("OFF"));
+      }
     }
   }
-
-  lastButtonState = reading;
 }
